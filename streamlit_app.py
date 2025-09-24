@@ -1318,14 +1318,18 @@ def grafico_evolucao_temporal(
 
 def export_plotly_png_current_size(fig: go.Figure) -> io.BytesIO:
     """
-    Exporta a figura Plotly para PNG respeitando width/height atuais.
+    Exporta a figura Plotly para PNG (versão compatível com Streamlit Cloud).
     """
-    w = int(fig.layout.width) if fig.layout.width else 900
-    h = int(fig.layout.height) if fig.layout.height else 900
-    buf = io.BytesIO()
-    fig.write_image(buf, format="png", width=w, height=h, scale=1)
-    buf.seek(0)
-    return buf
+    try:
+        w = int(fig.layout.width) if fig.layout.width else 900
+        h = int(fig.layout.height) if fig.layout.height else 900
+        buf = io.BytesIO()
+        fig.write_image(buf, format="png", width=w, height=h, scale=1)
+        buf.seek(0)
+        return buf
+    except Exception:
+        # Fallback: retorna buffer vazio se falhar
+        return io.BytesIO()
 
 # ==============================================================
 #   SEÇÃO: Abas e Renderização
@@ -1392,14 +1396,14 @@ with tab1:
         st.dataframe(df_tabela, use_container_width=True)
 
     # Download PNG
-    st.download_button(
-        "Baixar PNG (tamanho atual)",
-        data=export_plotly_png_current_size(fig1),
-        file_name="torre_topN.png",
-        mime="image/png",
-        key="dl_png_tab1",
-        use_container_width=True
-    )
+    #st.download_button(
+    #    "Baixar PNG (tamanho atual)",
+    #    data=export_plotly_png_current_size(fig1),
+    #    file_name="torre_topN.png",
+    #    mime="image/png",
+    #    key="dl_png_tab1",
+    #    use_container_width=True
+    #)
 
     # Download Excel
     buf1 = io.BytesIO()
