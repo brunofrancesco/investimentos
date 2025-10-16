@@ -341,18 +341,30 @@ if "PALETA_MEIO" not in st.session_state:
 # ==============================================================
 def fmt_mmk(v) -> str:
     """
-    Formata valores sem casas decimais com abreviação:
-    - >= 1_000_000 -> 'X MM'
-    - >= 1_000 -> 'X k'
+    Formata valores com abreviação e 2 casas decimais (PT-BR):
+    - >= 1_000_000_000 -> 'X,XX B'
+    - >= 1_000_000     -> 'X,XX MM'
+    - >= 1_000         -> 'X,XX k'
     - Caso contrário, inteiro com separador PT-BR.
     """
     v = float(v)
-    if abs(v) >= 1_000_000:
-        return f"{round(v/1_000_000):.0f} MM"
-    if abs(v) >= 1_000:
-        return f"{round(v/1_000):.0f} k"
-    s = f"{v:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"{s}"
+    av = abs(v)
+
+    def br(x, casas=2):
+        s = f"{x:,.{casas}f}"
+        # troca . e , para padrão PT-BR
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+    if av >= 1_000_000_000:
+        return f"{br(v/1_000_000_000, 2)} B"
+    if av >= 1_000_000:
+        return f"{br(v/1_000_000, 2)} MM"
+    if av >= 1_000:
+        return f"{br(v/1_000, 2)} k"
+
+    # abaixo de 1 mil: mantém sem casas decimais (como no original)
+    return br(v, 0)
+
 
 def periodo_label(p1, p2) -> str:
     """
