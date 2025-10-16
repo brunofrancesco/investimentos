@@ -151,14 +151,14 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13) -> pd.D
 
     # Criar dataframe de descontos
     df_descontos = pd.DataFrame([
-        {"Meio": "JORNAL",     "Desconto": 0.85},
-        {"Meio": "TV ABERTA",  "Desconto": 0.75},
-        {"Meio": "REVISTA",    "Desconto": 0.70},
-        {"Meio": "DIGITAL",    "Desconto": 0.70},
-        {"Meio": "PAY TV",     "Desconto": 0.65},
+        {"Meio": "JORNAL",     "Desconto": 0.15},
+        {"Meio": "TV ABERTA",  "Desconto": 0.25},
+        {"Meio": "REVISTA",    "Desconto": 0.30},
+        {"Meio": "DIGITAL",    "Desconto": 0.30},
+        {"Meio": "PAY TV",     "Desconto": 0.35},
         {"Meio": "CINEMA",     "Desconto": 0.50},
-        {"Meio": "RADIO",      "Desconto": 0.35},
-        {"Meio": "OOH",        "Desconto": 0.35},
+        {"Meio": "RADIO",      "Desconto": 0.65},
+        {"Meio": "OOH",        "Desconto": 0.65},
     ])
 
     # Aplicar descontos (se as colunas necessárias existirem)
