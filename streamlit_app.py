@@ -151,14 +151,14 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13) -> pd.D
 
     # Criar dataframe de descontos
     df_descontos = pd.DataFrame([
-        {"Meio": "JORNAL",     "Desconto": 0.15},
-        {"Meio": "TV ABERTA",  "Desconto": 0.25},
-        {"Meio": "REVISTA",    "Desconto": 0.30},
-        {"Meio": "DIGITAL",    "Desconto": 0.30},
-        {"Meio": "PAY TV",     "Desconto": 0.35},
+        {"Meio": "JORNAL",     "Desconto": 0.85},
+        {"Meio": "TV ABERTA",  "Desconto": 0.75},
+        {"Meio": "REVISTA",    "Desconto": 0.70},
+        {"Meio": "DIGITAL",    "Desconto": 0.70},
+        {"Meio": "PAY TV",     "Desconto": 0.65},
         {"Meio": "CINEMA",     "Desconto": 0.50},
-        {"Meio": "RADIO",      "Desconto": 0.65},
-        {"Meio": "OOH",        "Desconto": 0.65},
+        {"Meio": "RADIO",      "Desconto": 0.35},
+        {"Meio": "OOH",        "Desconto": 0.35},
     ])
 
     # Aplicar descontos (se as colunas necessárias existirem)
@@ -166,9 +166,13 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13) -> pd.D
         # Junta pelo campo "Meio"
         df = df.merge(df_descontos, on="Meio", how="left")
         
+        # exceção: TV ABERTA + GLOBO tem desconto 0.15
+        mask = (df["Meio"] == "TV ABERTA") & (df["Veículo"] == "GLOBO")
+        df.loc[mask, "Desconto"] = 0.15
+        
         # Cria novas colunas
         df["inv_000"] = df["Inv_Base"] * 1000
-        df["Investimento"] = df["inv_000"] * df["Desconto"]
+        df["Investimento"] = df["inv_000"] * (1 - df["Desconto"])
 
     # Mapeamento de meses PT -> número
     map_meses = {
@@ -450,10 +454,15 @@ def carregar_df(file, usar_local: bool = False) -> pd.DataFrame | None:
         # Remove arquivo temporário
         try:
             os.remove("temp_base_geral.xlsx")
-        except:
-            pass
+        except FileNotFoundError:
+                pass
+        except PermissionError:
+                pass
+        except OSError:
+                pass
 
     return df
+
 
 # Carrega DF
 df = carregar_df(arquivo, usar_local)
