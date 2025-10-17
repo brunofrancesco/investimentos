@@ -8,7 +8,7 @@
 #       cd caminho/para/seu/projeto
 #
 # 2) Rode o servidor Streamlit:
-#       streamlit run streamlit_app_modificado.py
+#       streamlit run streamlit_app.py
 #
 # 3) Abra o endereço exibido no terminal (ex.: http://localhost:8501)
 #
@@ -45,7 +45,7 @@ st.markdown("""
 #   SEÇÃO: Processamento de Dados (integrado do trat_monitor_aba.py)
 # ==============================================================
 
-def processar_base_geral(arquivo_path: str, header_line_excel: int = 13) -> pd.DataFrame:
+def processar_base_geral(arquivo_path: str, header_line_excel: int = 13, descontos_config=None) -> pd.DataFrame:
     """
     Processa o arquivo base_geral.xlsx aplicando todas as transformações
     que estavam no script trat_monitor_aba.py
@@ -149,16 +149,25 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13) -> pd.D
         }
         df["Meio"] = df["Meio"].replace(map_meio)
 
-    # Criar dataframe de descontos
+    # Usar descontos configuráveis do session_state
+    if descontos_config is None:
+        descontos_config = {
+            "JORNAL": 0.85,
+            "TV ABERTA": 0.75,
+            "REVISTA": 0.70,
+            "DIGITAL": 0.70,
+            "PAY TV": 0.65,
+            "CINEMA": 0.50,
+            "RADIO": 0.35,
+            "OOH": 0.35,
+            "TV ABERTA/GLOBO": 0.15
+            }
+    
+    # Criar dataframe de descontos a partir da configuração
     df_descontos = pd.DataFrame([
-        {"Meio": "JORNAL",     "Desconto": 0.85},
-        {"Meio": "TV ABERTA",  "Desconto": 0.75},
-        {"Meio": "REVISTA",    "Desconto": 0.70},
-        {"Meio": "DIGITAL",    "Desconto": 0.70},
-        {"Meio": "PAY TV",     "Desconto": 0.65},
-        {"Meio": "CINEMA",     "Desconto": 0.50},
-        {"Meio": "RADIO",      "Desconto": 0.35},
-        {"Meio": "OOH",        "Desconto": 0.35},
+        {"Meio": meio, "Desconto": desconto} 
+        for meio, desconto in descontos_config.items() 
+        if meio != "TV ABERTA/GLOBO"  # Excluir a exceção Globo
     ])
 
     # Aplicar descontos (se as colunas necessárias existirem)
@@ -166,13 +175,15 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13) -> pd.D
         # Junta pelo campo "Meio"
         df = df.merge(df_descontos, on="Meio", how="left")
         
-        # exceção: TV ABERTA + GLOBO tem desconto 0.15
-        mask = (df["Meio"] == "TV ABERTA") & (df["Veículo"] == "GLOBO")
-        df.loc[mask, "Desconto"] = 0.15
+        # Exceção: TV ABERTA + GLOBO usa desconto configurável
+        if "Veículo" in df.columns:
+            mask = (df["Meio"] == "TV ABERTA") & (df["Veículo"] == "GLOBO")
+            df.loc[mask, "Desconto"] = descontos_config.get("TV ABERTA/GLOBO", 0.15)
         
         # Cria novas colunas
         df["inv_000"] = df["Inv_Base"] * 1000
         df["Investimento"] = df["inv_000"] * (1 - df["Desconto"])
+
 
     # Mapeamento de meses PT -> número
     map_meses = {
@@ -369,7 +380,6 @@ def fmt_mmk(v) -> str:
     # abaixo de 1 mil: mantém sem casas decimais (como no original)
     return br(v, 0)
 
-
 def periodo_label(p1, p2) -> str:
     """
     Rótulo compacto para um intervalo (p1, p2):
@@ -419,6 +429,23 @@ def build_palette(marcas: List[str], paleta_existente: dict) -> dict:
         palette[m] = paleta_existente.get(m, next(it, "#999999"))
     return palette
 
+# ==============================================================
+#   SEÇÃO: Configuração de Descontos Editáveis
+# ==============================================================
+
+# Inicializa descontos padrão no session_state
+if "descontos_config" not in st.session_state:
+    st.session_state.descontos_config = {
+        "JORNAL": 0.85,
+        "TV ABERTA": 0.75,
+        "REVISTA": 0.70,
+        "DIGITAL": 0.70,
+        "PAY TV": 0.65,
+        "CINEMA": 0.50,
+        "RADIO": 0.35,
+        "OOH": 0.35,
+        "TV ABERTA/GLOBO": 0.15  # Exceção Globo
+    }
 
 # ==============================================================
 #   SEÇÃO: Entrada e Carregamento de Dados (MODIFICADO)
@@ -432,8 +459,8 @@ arquivo = st.sidebar.file_uploader(
 )
 usar_local = st.sidebar.checkbox("Usar base_geral.xlsx local", value=False)
 
-@st.cache_data
-def carregar_df(file, usar_local: bool = False) -> pd.DataFrame | None:
+#@st.cache_data
+def carregar_df(file, usar_local: bool = False, _descontos_config=None) -> pd.DataFrame | None:
     """
     Lê o dataset a partir de:
       - arquivo base_geral.xlsx local (se `usar_local` for True), ou
@@ -443,14 +470,14 @@ def carregar_df(file, usar_local: bool = False) -> pd.DataFrame | None:
     if usar_local:
         if not os.path.exists("base_geral.xlsx"):
             return None
-        df = processar_base_geral("base_geral.xlsx")
+        df = processar_base_geral("base_geral.xlsx", descontos_config=_descontos_config)
     else:
         if file is None:
             return None
         # Salva temporariamente o arquivo enviado
         with open("temp_base_geral.xlsx", "wb") as f:
             f.write(file.getbuffer())
-        df = processar_base_geral("temp_base_geral.xlsx")
+        df = processar_base_geral("temp_base_geral.xlsx", descontos_config=_descontos_config)
         # Remove arquivo temporário
         try:
             os.remove("temp_base_geral.xlsx")
@@ -463,12 +490,12 @@ def carregar_df(file, usar_local: bool = False) -> pd.DataFrame | None:
 
     return df
 
-
 # Carrega DF
-df = carregar_df(arquivo, usar_local)
+df = carregar_df(arquivo, usar_local, st.session_state.get("descontos_config"))
+
 
 if df is None:
-    st.markdown(" ", unsafe_allow_html=True)  # ← Adiciona espaço antes
+    st.markdown("    ", unsafe_allow_html=True)
     st.markdown("""
     ### 📋 **Instruções para Carregar os Dados**
     
@@ -480,11 +507,45 @@ if df is None:
 
     **2 - Upload do Arquivo**
     - Use o botão "Envie base_geral.xlsx" na barra lateral
-    - Certifique-se de que o fomarto do arquivo é o mesmo do modelo.
+    - Certifique-se de que o formato do arquivo é o mesmo do modelo.
     
     💡 **Dica:** O sistema processará automaticamente os dados brutos e aplicará todas as transformações necessárias.
     """)
+    
+    st.markdown("---")
+    st.markdown("### ⚙️ **Configuração de Descontos**")
+    st.markdown("Ajuste os valores de desconto que serão aplicados por meio de comunicação:")
+    
+    # Cria colunas para a tabela editável
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("**Meio de Comunicação**")
+    with col2:
+        st.markdown("**Desconto (%)**")
+    
+    # Interface editável para cada desconto
+    for meio, desconto_atual in st.session_state.descontos_config.items():
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.text(meio)
+        with col2:
+            # Converte para percentual e permite edição
+            novo_desconto = st.number_input(
+                f"desconto_{meio}",
+                min_value=0.0,
+                max_value=100.0,
+                value=desconto_atual * 100,
+                step=0.1,
+                format="%.1f",
+                key=f"desc_{meio}",
+                label_visibility="collapsed"
+            )
+            # Atualiza o session_state
+            st.session_state.descontos_config[meio] = novo_desconto / 100
+    
     st.stop()
+
 
 
 # Validações mínimas
@@ -528,7 +589,7 @@ def preparar_top10(dfe: pd.DataFrame, n: int = 10) -> tuple[pd.DataFrame, float]
     top["y1"] = top["pct"].cumsum() * 100.0            # topo segmento
     top["y0"] = (top["pct"].cumsum() - top["pct"]) * 100.0  # base segmento
     top["y_mid"] = (top["y0"] + top["y1"]) / 2.0
-    top["pct_label"] = (top["pct"] * 100).round(0).astype(int).astype(str) + "%"
+    top["pct_label"] = (top["pct"] * 100).round(1).astype(str) + "%"
     return top, total
 
 
@@ -549,7 +610,7 @@ def preparar_por_marcas(dfe: pd.DataFrame, marcas_sel: list[str]) -> tuple[pd.Da
     agg["y1"] = agg["pct"].cumsum() * 100.0
     agg["y0"] = (agg["pct"].cumsum() - agg["pct"]) * 100.0
     agg["y_mid"] = (agg["y0"] + agg["y1"]) / 2.0
-    agg["pct_label"] = (agg["pct"] * 100).round(0).astype(int).astype(str) + "%"
+    agg["pct_label"] = (agg["pct"] * 100).round(1).astype(str) + "%"
     return agg, total
 
 
@@ -657,7 +718,7 @@ def torre_top10_plotly(
         ),
         yaxis=dict(range=[-6, 108], showgrid=False, showticklabels=False, showline=False, zeroline=False),
         plot_bgcolor="white", paper_bgcolor="white",
-        title=dict(text=f"Participação por Marca — Top-{n}", x=0.5),
+        title=dict(text=""),
         annotations=annotations,
         shapes=shapes
     )
@@ -813,12 +874,7 @@ def torre_marcas_plotly(
 
         # ---------------- [AJUSTE] centralização do título ----------------
 
-        title=dict(text=f"Participação por Marca — Seleção ({len(marcas)} marcas)", 
-            x=0.5,             # centraliza horizontalmente no gráfico
-            y=0.95,            # altura do título
-            xanchor="center",  # ancora pelo centro
-            yanchor="bottom"   # ancora pela base do título
-        ),
+        title=dict(text=""), 
         annotations=annotations,
         shapes=shapes
     )
@@ -994,7 +1050,7 @@ def grafico_investimento_por_praca(
             y_mid = cum + v / 2.0
             annotations.append(dict(
                 x=m, y=y_mid, xref="x", yref="y",
-                text=f"{int(round(v))}%", showarrow=False,
+                text=f"{v:.1f}%", showarrow=False,
                 font=dict(color="white", size=12),
                 bgcolor="black", opacity=0.9,
                 bordercolor="black", borderpad=3
@@ -1015,8 +1071,8 @@ def grafico_investimento_por_praca(
     fig.update_traces(width=bar_width)   # [AJUSTE] espessura das barras (todas as marcas)
 
     # Título + subtítulo (linha abaixo via <br>)
-    sub = periodo_label(sel_dt_ini, sel_dt_fim).replace(" a ", " — ")
-    title_html = f"<b>INVESTIMENTO POR PRAÇA</b><br><span style='font-size:15px;'>{sub}</span>"
+    #sub = periodo_label(sel_dt_ini, sel_dt_fim).replace(" a ", " — ")
+    #title_html = f"<b>INVESTIMENTO POR PRAÇA</b><br><span style='font-size:15px;'>{sub}</span>"
 
     fig.update_layout(
         barmode="stack",
@@ -1041,7 +1097,7 @@ def grafico_investimento_por_praca(
             title=None
         ),
         plot_bgcolor="white", paper_bgcolor="white",
-        title=dict(text=title_html, x=0.5, xanchor="center", y=0.98, yanchor="top"),
+        title=dict(text="", x=0.5, xanchor="center", y=0.98, yanchor="top"),
         annotations=annotations
     )
 
@@ -1060,7 +1116,7 @@ def grafico_investimento_por_meio(
     widget_prefix: str = "meios",
     show_palette_controls: bool = True,
     bar_width: float = 0.55  # [AJUSTE] espessura das barras (todas as marcas)
-) -> go.Figure:
+) -> tuple[go.Figure, pd.DataFrame]:
     """
     Barras verticais 100% empilhadas por 'Meio':
       - Eixo X: Marcas selecionadas (uma barra por marca)
@@ -1084,7 +1140,7 @@ def grafico_investimento_por_meio(
             ),
             height=500
         )
-        return fig
+        return fig, pd.DataFrame()
 
     # ---------------- Agregações ----------------
     totais_por_marca = base.groupby("Marca", as_index=False)["Investimento"].sum()
@@ -1164,7 +1220,7 @@ def grafico_investimento_por_meio(
             y_mid = cum + v / 2.0
             annotations.append(dict(
                 x=marca, y=y_mid, xref="x", yref="y",
-                text=f"{int(round(v))}%", showarrow=False,
+                text=f"{v:.1f}%", showarrow=False,
                 font=dict(color="white", size=12),
                 bgcolor="black", opacity=0.9,
                 bordercolor="black", borderpad=3
@@ -1184,8 +1240,8 @@ def grafico_investimento_por_meio(
     fig.update_traces(width=bar_width)   # [AJUSTE] espessura das barras (todas as marcas)
 
     # Título + subtítulo (linha abaixo via <br>)
-    sub = periodo_label(sel_dt_ini, sel_dt_fim).replace(" a ", " — ")
-    title_html = f"<b>INVESTIMENTO POR MEIO</b><br><span style='font-size:15px;'>{sub}</span>"
+    #sub = periodo_label(sel_dt_ini, sel_dt_fim).replace(" a ", " — ")
+    #title_html = f"<b>INVESTIMENTO POR MEIO</b><br><span style='font-size:15px;'>{sub}</span>"
 
     fig.update_layout(
         barmode="stack",
@@ -1210,11 +1266,11 @@ def grafico_investimento_por_meio(
             title=None
         ),
         plot_bgcolor="white", paper_bgcolor="white",
-        title=dict(text=title_html, x=0.5, xanchor="center", y=0.98, yanchor="top"),
+        title=dict(text=" ", x=0.5, xanchor="center", y=0.98, yanchor="top"),
         annotations=annotations
     )
 
-    return fig
+    return fig, mat_val
 
 
 # ==============================================================
@@ -1339,18 +1395,14 @@ def grafico_evolucao_temporal(
 
 def export_plotly_png_current_size(fig: go.Figure) -> io.BytesIO:
     """
-    Exporta a figura Plotly para PNG (versão compatível com Streamlit Cloud).
+    Exporta a figura Plotly para PNG respeitando width/height atuais.
     """
-    try:
-        w = int(fig.layout.width) if fig.layout.width else 900
-        h = int(fig.layout.height) if fig.layout.height else 900
-        buf = io.BytesIO()
-        fig.write_image(buf, format="png", width=w, height=h, scale=1)
-        buf.seek(0)
-        return buf
-    except Exception:
-        # Fallback: retorna buffer vazio se falhar
-        return io.BytesIO()
+    w = int(fig.layout.width) if fig.layout.width else 900
+    h = int(fig.layout.height) if fig.layout.height else 900
+    buf = io.BytesIO()
+    fig.write_image(buf, format="png", width=w, height=h, scale=1)
+    buf.seek(0)
+    return buf
 
 # ==============================================================
 #   SEÇÃO: Abas e Renderização
@@ -1417,14 +1469,14 @@ with tab1:
         st.dataframe(df_tabela, use_container_width=True)
 
     # Download PNG
-    #st.download_button(
-    #    "Baixar PNG (tamanho atual)",
-    #    data=export_plotly_png_current_size(fig1),
-    #    file_name="torre_topN.png",
-    #    mime="image/png",
-    #    key="dl_png_tab1",
-    #    use_container_width=True
-    #)
+    st.download_button(
+        "Baixar PNG (tamanho atual)",
+        data=export_plotly_png_current_size(fig1),
+        file_name="torre_topN.png",
+        mime="image/png",
+        key="dl_png_tab1",
+        use_container_width=True
+    )
 
     # Download Excel
     buf1 = io.BytesIO()
@@ -1473,7 +1525,8 @@ with tab2:
         help="Escolha 1 ou mais marcas.",
         key="marcas_sel_tab2"
     )
-
+# NOVO: Salva a seleção principal no estado da sessão
+    st.session_state.marcas_selecao_principal = marcas_sel
     if not marcas_sel:
         st.info("Selecione pelo menos uma marca para exibir o gráfico.")
     else:
@@ -1535,10 +1588,11 @@ with tab3:
               .sort_values(ascending=False).head(5).index.tolist()
         )
         sugestao_cmp = [m for m in sugestao_cmp if m in marcas_opts_cmp]
+        default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_cmp
         marcas_sel_cmp = st.multiselect(
             "Marcas (mesmas nos dois gráficos)",
             options=marcas_opts_cmp,
-            default=sugestao_cmp,
+            default=default_cmp,
             key="marcas_sel_tab3",
             help="As mesmas marcas serão comparadas nos dois períodos."
         )
@@ -1639,10 +1693,11 @@ with tab4:
              .sort_values(ascending=False).head(5).index.tolist()
     )
     sugestao_ts = [m for m in sugestao_ts if m in marcas_opts_ts]
+    default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_ts
     marcas_sel_ts = st.multiselect(
         "Marcas (linhas)",
         options=marcas_opts_ts,
-        default=sugestao_ts,
+        default=default_cmp,
         help="Cada marca selecionada gera uma linha no gráfico.",
         key="marcas_sel_ts"
     )
@@ -1692,7 +1747,7 @@ with tab4:
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
         plot_bgcolor="white", paper_bgcolor="white",
-        title=dict(text="Evolução Mensal de Investimento (linhas)", x=0.5)
+        title=dict(text=" ", x=0.5)
     )
     st.plotly_chart(fig_ts, use_container_width=True)
 
@@ -1739,10 +1794,11 @@ with tab5:
             .sort_values(ascending=False).head(6).index.tolist()
     )
     sugestao_p = [m for m in sugestao_p if m in marcas_opts_p]
+    default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_p
     marcas_sel_p = st.multiselect(
         "Marcas",
         options=marcas_opts_p,
-        default=sugestao_p,
+        default=default_cmp,
         help="Cada barra é uma marca; as cores representam as praças.",
         key="marcas_sel_pracas"
     )
@@ -1790,10 +1846,11 @@ with tab6:
             .sort_values(ascending=False).head(6).index.tolist()
     )
     sugestao_m = [ma for ma in sugestao_m if ma in marcas_opts_m]
+    default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_m
     marcas_sel_m = st.multiselect(
         "Marcas",
         options=marcas_opts_m,
-        default=sugestao_m,
+        default=default_cmp,
         help="Cada barra é uma marca; as cores representam os Meios.",
         key="marcas_sel_meios"
     )
@@ -1801,10 +1858,25 @@ with tab6:
     if not marcas_sel_m:
         st.info("Selecione ao menos uma marca para exibir o gráfico por Meio.")
     else:
-        fig_m = grafico_investimento_por_meio(
+        fig_m, df_meios_detalhe = grafico_investimento_por_meio(
             df_m, marcas_sel_m, sel_dt_ini_m, sel_dt_fim_m,
             widget_prefix="meio",
             show_palette_controls=True,
             bar_width=0.55   # [AJUSTE] espessura das barras
         )
         st.plotly_chart(fig_m, use_container_width=True)
+        # --- [NOVO] Exibe a tabela de detalhe dos Meios ---
+    if not df_meios_detalhe.empty:
+        st.subheader("Investimento por Meio (Valores Absolutos)")
+        # Formatação para exibição
+        df_meios_display = df_meios_detalhe.copy()
+        df_meios_display = df_meios_display.reset_index()
+        df_meios_display.rename(columns={"Marca": "Marca"}, inplace=True)
+        for col in df_meios_display.columns:
+            if col != "Marca":
+                # Garante que a coluna não é a coluna de índice antes de tentar formatar
+                if col in df_meios_detalhe.columns:
+                    # O formato de formatação de moeda deve ser o mesmo usado em outras partes do seu código
+                    df_meios_display[col] = df_meios_display[col].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.dataframe(df_meios_display, use_container_width=True)
+    # --- [FIM NOVO] Exibe a tabela de detalhe dos Meios ---
