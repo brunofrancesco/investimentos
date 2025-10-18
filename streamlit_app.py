@@ -45,6 +45,22 @@ st.markdown("""
 #   SEÇÃO: Processamento de Dados (integrado do trat_monitor_aba.py)
 # ==============================================================
 
+def sanitize_default(default_list, options_list, fallback_list=None):
+        """
+        Garante que o 'default' do multiselect seja subconjunto de 'options'.
+        Se nada sobrar, usa fallback_list (já validada no contexto) ou [].
+        """
+        default_list = default_list or []
+        options_set = set(options_list or [])
+        cleaned = [x for x in default_list if x in options_set]
+        if cleaned:
+            return cleaned
+        # se não sobrou nada, tenta um fallback seguro
+        if fallback_list:
+            return [x for x in fallback_list if x in options_set]
+        return []
+
+
 def processar_base_geral(arquivo_path: str, header_line_excel: int = 13, descontos_config=None) -> pd.DataFrame:
     """
     Processa o arquivo base_geral.xlsx aplicando todas as transformações
@@ -1693,7 +1709,10 @@ with tab4:
              .sort_values(ascending=False).head(5).index.tolist()
     )
     sugestao_ts = [m for m in sugestao_ts if m in marcas_opts_ts]
-    default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_ts
+    
+    default_cmp = sanitize_default(st.session_state.get("marcas_selecao_principal") or sugestao_ts,
+                               marcas_opts_ts, fallback_list=sugestao_ts)
+    
     marcas_sel_ts = st.multiselect(
         "Marcas (linhas)",
         options=marcas_opts_ts,
@@ -1794,7 +1813,10 @@ with tab5:
             .sort_values(ascending=False).head(6).index.tolist()
     )
     sugestao_p = [m for m in sugestao_p if m in marcas_opts_p]
-    default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_p
+    
+    default_cmp = sanitize_default(st.session_state.get("marcas_selecao_principal") or sugestao_p,
+                               marcas_opts_p, fallback_list=sugestao_p)
+    
     marcas_sel_p = st.multiselect(
         "Marcas",
         options=marcas_opts_p,
@@ -1846,7 +1868,10 @@ with tab6:
             .sort_values(ascending=False).head(6).index.tolist()
     )
     sugestao_m = [ma for ma in sugestao_m if ma in marcas_opts_m]
-    default_cmp = st.session_state.marcas_selecao_principal if st.session_state.marcas_selecao_principal else sugestao_m
+    
+    default_cmp = sanitize_default(st.session_state.get("marcas_selecao_principal") or sugestao_m,
+                               marcas_opts_m, fallback_list=sugestao_m)
+    
     marcas_sel_m = st.multiselect(
         "Marcas",
         options=marcas_opts_m,
