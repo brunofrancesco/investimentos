@@ -150,7 +150,6 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13, descont
         "(R$)": "Inv_Base",
         "ANO": "Ano",
     }
-
     # Aplica renomeação
     df = rename_existing(df, rename_map)
 
@@ -164,7 +163,11 @@ def processar_base_geral(arquivo_path: str, header_line_excel: int = 13, descont
             "TV ASSINATURA": "PAY TV",
         }
         df["Meio"] = df["Meio"].replace(map_meio)
-
+            
+    # Usa dtype pandas "string" (mantém <NA> como nulo de verdade) e tira espaços
+    if "Marca" in df.columns:
+        df["Marca"] = df["Marca"].astype("string").str.strip()
+            
     # Usar descontos configuráveis do session_state
     if descontos_config is None:
         descontos_config = {
@@ -1527,7 +1530,11 @@ with tab2:
     df_sel = df[(per_ts_2 >= sel_dt_ini_2) & (per_ts_2 <= sel_dt_fim_2)].copy()
 
     # Seleção de marcas
-    marcas_opts = sorted(df_sel["Marca"].dropna().unique().tolist())
+    df_sel["Marca"] = df_sel["Marca"].astype("string").str.strip()
+    marcas_opts = sorted(
+    df_sel["Marca"].dropna().unique().tolist(),
+    key=lambda s: str(s).casefold()
+    )
     sugestao = (
         df_sel.groupby("Marca")["Investimento"].sum()
              .sort_values(ascending=False).head(5).index.tolist()
@@ -1598,7 +1605,10 @@ with tab3:
     c_marcas, c_esq, c_dir = st.columns([2, 1, 1])
 
     with c_marcas:
-        marcas_opts_cmp = sorted(df["Marca"].dropna().unique().tolist())
+        marcas_opts_cmp = sorted(
+        df["Marca"].dropna().unique().tolist(),
+        key=lambda s: str(s).casefold()
+        )
         sugestao_cmp = (
             df.groupby("Marca")["Investimento"].sum()
               .sort_values(ascending=False).head(5).index.tolist()
